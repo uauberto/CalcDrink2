@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config.ts';
 import type { Company, Ingredient, Drink, Event, StaffMember, DrinkIngredient } from '../types.ts';
@@ -121,8 +122,10 @@ create index if not exists idx_ingredients_company on ingredients(company_id);
 create index if not exists idx_drinks_company on drinks(company_id);
 create index if not exists idx_events_company on events(company_id);
 
--- Permissões
+-- Permissões e Segurança
 alter table companies disable row level security;
+alter table system_config disable row level security; -- Garante acesso à config
+
 grant all on all tables in schema public to anon;
 grant all on all sequences in schema public to anon;
 `;
@@ -209,7 +212,11 @@ export const api = {
   system: {
     getConfig: async () => {
         const { data, error } = await supabase.from('system_config').select('*');
-        if (error) { handleDatabaseError(error, 'Get Config'); return { prices: { monthly: 49.90, yearly: 39.90 }, googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' } }; }
+        if (error) { 
+            handleDatabaseError(error, 'Get Config'); 
+            // Return defaults on error so the app doesn't crash
+            return { prices: { monthly: 49.90, yearly: 39.90 }, googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' } }; 
+        }
         
         const getValue = (key: string, def: string) => data.find((i:any) => i.key === key)?.value || def;
 
