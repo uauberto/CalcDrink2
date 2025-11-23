@@ -1,7 +1,7 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Company } from '../types.ts';
-import { Check, CreditCard, Star, Loader2, LogOut } from 'lucide-react';
+import { Check, CreditCard, Star, Loader2, LogOut, ShoppingCart } from 'lucide-react';
+import { api } from '../lib/supabase.ts';
 
 interface SubscriptionProps {
   company: Company;
@@ -11,21 +11,76 @@ interface SubscriptionProps {
 
 const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLogout }) => {
   const [isLoading, setIsLoading] = useState<'monthly' | 'yearly' | null>(null);
-  
+  const [prices, setPrices] = useState({ monthly: 49.90, yearly: 39.90 });
   const isOverdue = company.status === 'suspended' || (company.nextBillingDate && new Date(company.nextBillingDate) < new Date());
 
-  const handleSelectPlan = async (plan: 'monthly' | 'yearly') => {
-      setIsLoading(plan);
-      try {
-          // Execute the subscription logic
-          await onSubscribe(plan);
-          // Note: We don't explicitly set isLoading(false) here because 
-          // if successful, the parent App component will unmount this 
-          // view and mount the Dashboard immediately.
-      } catch (error) {
-          console.error("Erro ao assinar:", JSON.stringify(error, null, 2));
-          setIsLoading(null);
-      }
+  useEffect(() => {
+    const loadPrices = async () => {
+        const p = await api.system.getPrices();
+        setPrices(p);
+    };
+    loadPrices();
+  }, []);
+
+  // GOOGLE PAY LOGIC
+  useEffect(() => {
+    const loadGooglePay = () => {
+        const paymentsClient = new (window as any).google.payments.api.PaymentsClient({
+            environment: 'TEST' // Change to 'PRODUCTION' when ready
+        });
+        return paymentsClient;
+    };
+
+    (window as any).googlePayClient = loadGooglePay();
+  }, []);
+
+  const processPayment = async (plan: 'monthly' | 'yearly') => {
+    setIsLoading(plan);
+    const price = plan === 'monthly' ? prices.monthly : (prices.yearly * 12);
+    
+    const paymentDataRequest = {
+        apiVersion: 2,
+        apiVersionMinor: 0,
+        allowedPaymentMethods: [
+          {
+            type: 'CARD',
+            parameters: {
+              allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+              allowedCardNetworks: ['MASTERCARD', 'VISA']
+            },
+            tokenizationSpecification: {
+              type: 'PAYMENT_GATEWAY',
+              parameters: {
+                gateway: 'example', // CHANGE THIS TO YOUR GATEWAY (e.g., 'stripe', 'adyen')
+                gatewayMerchantId: 'exampleGatewayMerchantId'
+              }
+            }
+          }
+        ],
+        merchantInfo: {
+          merchantId: '12345678901234567890', // YOUR MERCHANT ID
+          merchantName: 'CalculaDrink'
+        },
+        transactionInfo: {
+          totalPriceStatus: 'FINAL',
+          totalPriceLabel: 'Total',
+          totalPrice: price.toFixed(2),
+          currencyCode: 'BRL',
+          countryCode: 'BR'
+        }
+    };
+
+    try {
+        const client = (window as any).googlePayClient;
+        const paymentData = await client.loadPaymentData(paymentDataRequest);
+        console.log('Success', paymentData);
+        // Here you would send paymentData.paymentMethodData.tokenizationData.token to your backend
+        // For now, we assume success
+        await onSubscribe(plan);
+    } catch (err) {
+        console.error('Error', err);
+        setIsLoading(null);
+    }
   };
 
   return (
@@ -52,7 +107,7 @@ const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLog
           <div className={`bg-gray-800 rounded-2xl p-8 border border-gray-700 hover:border-orange-500 transition-all flex flex-col ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
             <h3 className="text-xl font-semibold text-white mb-2">Mensal</h3>
             <div className="flex items-baseline gap-1 mb-6">
-              <span className="text-4xl font-bold text-white">R$ 49,90</span>
+              <span className="text-4xl font-bold text-white">R$ {prices.monthly.toFixed(2).replace('.', ',')}</span>
               <span className="text-gray-400">/mês</span>
             </div>
             <ul className="space-y-4 mb-8 flex-1">
@@ -70,12 +125,12 @@ const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLog
               </li>
             </ul>
             <button 
-              onClick={() => handleSelectPlan('monthly')}
+              onClick={() => processPayment('monthly')}
               disabled={isLoading !== null}
-              className="w-full bg-gray-700 hover:bg-orange-600 hover:text-white text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed"
+              className="w-full bg-gray-700 hover:bg-white hover:text-black text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed border border-gray-600"
             >
-              {isLoading === 'monthly' ? <Loader2 className="animate-spin" /> : null}
-              {isLoading === 'monthly' ? 'Processando...' : 'Assinar Mensal'}
+              {isLoading === 'monthly' ? <Loader2 className="animate-spin" /> : <img src="https://www.gstatic.com/instantbuy/svg/dark_gpay.svg" alt="GPay" className="h-6" />}
+              {isLoading === 'monthly' ? 'Processando...' : 'Pagar com GPay'}
             </button>
           </div>
 
@@ -88,17 +143,17 @@ const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLog
                 Anual <Star className="text-yellow-400 fill-yellow-400" size={16}/>
             </h3>
             <div className="flex items-baseline gap-1 mb-2">
-              <span className="text-4xl font-bold text-white">R$ 39,90</span>
+              <span className="text-4xl font-bold text-white">R$ {prices.yearly.toFixed(2).replace('.', ',')}</span>
               <span className="text-gray-400">/mês</span>
             </div>
-            <p className="text-sm text-green-400 mb-6 font-medium">Cobrado anualmente (R$ 478,80)</p>
+            <p className="text-sm text-green-400 mb-6 font-medium">Cobrado anualmente (R$ {(prices.yearly * 12).toFixed(2).replace('.', ',')})</p>
             
             <ul className="space-y-4 mb-8 flex-1">
               <li className="flex items-center gap-3 text-white">
                 <Check className="text-orange-500" size={20} /> <strong>Tudo do plano mensal</strong>
               </li>
                <li className="flex items-center gap-3 text-white">
-                <Check className="text-orange-500" size={20} /> <strong>20% de desconto</strong>
+                <Check className="text-orange-500" size={20} /> <strong>Desconto exclusivo</strong>
               </li>
               <li className="flex items-center gap-3 text-white">
                 <Check className="text-orange-500" size={20} /> Relatórios avançados
@@ -108,12 +163,12 @@ const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLog
               </li>
             </ul>
             <button 
-              onClick={() => handleSelectPlan('yearly')}
+              onClick={() => processPayment('yearly')}
               disabled={isLoading !== null}
-              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg disabled:cursor-not-allowed"
+              className="w-full bg-white hover:bg-gray-200 text-black font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg disabled:cursor-not-allowed"
             >
-              {isLoading === 'yearly' ? <Loader2 className="animate-spin" /> : <CreditCard size={20} />}
-              {isLoading === 'yearly' ? 'Processando...' : 'Assinar Anual'}
+              {isLoading === 'yearly' ? <Loader2 className="animate-spin" /> : <img src="https://www.gstatic.com/instantbuy/svg/light_gpay.svg" alt="GPay" className="h-6" />}
+              {isLoading === 'yearly' ? 'Processando...' : 'Pagar com GPay'}
             </button>
           </div>
         </div>

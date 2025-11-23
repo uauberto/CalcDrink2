@@ -212,6 +212,15 @@ const DrinkManager: React.FC<DrinkManagerProps> = ({ drinks, setDrinks, ingredie
             {importLoading ? <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div> : <Upload size={16} />}
             Importar Drinks
         </button>
+        <a 
+            href="data:text/csv;charset=utf-8,Drink,Insumo,Quantidade%0AMojito,Rum Prata,50%0AMojito,Hortelã,10%0AMojito,Açúcar,5%0AMojito,Água com Gás,50%0ACaipirinha,Cachaça,60%0ACaipirinha,Limão,1%0ACaipirinha,Açúcar,10" 
+            download="modelo_drinks.csv"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 text-sm"
+            title="Baixar Modelo CSV"
+        >
+            <FileSpreadsheet size={16} />
+            Modelo
+        </a>
         <button onClick={openModalForNew} className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-500">
           <Plus size={18} /> Adicionar Novo Drink
         </button>

@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Company } from '../types.ts';
 import { api } from '../lib/supabase.ts';
-import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, AlertTriangle } from 'lucide-react';
+import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, AlertTriangle, Settings, DollarSign, Save } from 'lucide-react';
 
 interface MasterDashboardProps {
     adminUser: Company;
@@ -87,11 +86,16 @@ const AlertModal: React.FC<AlertModalProps> = ({ isOpen, title, message, type = 
 // --- MAIN COMPONENT ---
 
 const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, onSwitchToApp }) => {
+    const [activeTab, setActiveTab] = useState<'companies' | 'settings'>('companies');
     const [companies, setCompanies] = useState<Company[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'all' | 'pending_approval' | 'active' | 'suspended' | 'waiting_payment'>('all');
     
+    // Settings State
+    const [prices, setPrices] = useState({ monthly: 49.90, yearly: 39.90 });
+    const [savingSettings, setSavingSettings] = useState(false);
+
     // Modal States
     const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean; title: string; message: string; onConfirm: () => void;}>({
         isOpen: false, title: '', message: '', onConfirm: () => {} 
@@ -109,14 +113,33 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     const [managingUsersCompany, setManagingUsersCompany] = useState<Company | null>(null);
 
     useEffect(() => {
-        loadCompanies();
-    }, []);
+        if (activeTab === 'companies') loadCompanies();
+        if (activeTab === 'settings') loadSettings();
+    }, [activeTab]);
 
     const loadCompanies = async () => {
         setIsLoading(true);
         const data = await api.admin.listAllCompanies();
         setCompanies(data);
         setIsLoading(false);
+    };
+
+    const loadSettings = async () => {
+        setIsLoading(true);
+        const data = await api.system.getPrices();
+        setPrices(data);
+        setIsLoading(false);
+    }
+
+    const handleSaveSettings = async () => {
+        setSavingSettings(true);
+        const success = await api.system.savePrices(prices.monthly, prices.yearly);
+        setSavingSettings(false);
+        if (success) {
+            showAlert("Sucesso", "Configurações de preço atualizadas!", 'success');
+        } else {
+            showAlert("Erro", "Falha ao salvar configurações.", 'error');
+        }
     };
 
     const generateRandomPassword = () => Math.random().toString(36).slice(-8).toUpperCase();
@@ -386,174 +409,238 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
             </header>
 
             <main className="container mx-auto p-4 sm:p-6">
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
-                    <div className="w-full lg:w-auto">
-                        <h2 className="text-xl md:text-2xl font-bold text-white mb-1">Empresas Cadastradas</h2>
-                        <p className="text-gray-400 text-sm">Gerencie acessos e permissões</p>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-                         <div className="relative flex-1 sm:w-64">
-                            <Search className="absolute left-3 top-3 text-gray-500" size={18} />
-                            <input 
-                                type="text" 
-                                placeholder="Buscar empresa..." 
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-orange-500"
-                            />
-                        </div>
-                        <button 
-                            onClick={loadCompanies}
-                            className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg border border-gray-700 hover:bg-gray-700 transition-colors"
-                            title="Atualizar Lista"
-                        >
-                            <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
-                        </button>
-                    </div>
+                <div className="flex gap-4 mb-6 border-b border-gray-700">
+                    <button 
+                        onClick={() => setActiveTab('companies')} 
+                        className={`pb-2 px-4 font-medium text-sm transition-colors ${activeTab === 'companies' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Empresas
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('settings')} 
+                        className={`pb-2 px-4 font-medium text-sm transition-colors flex items-center gap-2 ${activeTab === 'settings' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        <Settings size={16}/> Configurações
+                    </button>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto pb-2">
-                    <FilterTab id="all" label="Todos" count={counts.all} isActive={filterStatus === 'all'} />
-                    <FilterTab id="pending_approval" label="Pendentes" count={counts.pending} isActive={filterStatus === 'pending_approval'} />
-                    <FilterTab id="waiting_payment" label="Pagamento" count={counts.payment} isActive={filterStatus === 'waiting_payment'} />
-                    <FilterTab id="active" label="Ativos" count={counts.active} isActive={filterStatus === 'active'} />
-                    <FilterTab id="suspended" label="Suspensos" count={counts.suspended} isActive={filterStatus === 'suspended'} />
-                </div>
-
-                {isLoading ? (
-                    <div className="flex justify-center py-20">
-                         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div>
-                    </div>
-                ) : (
+                {activeTab === 'companies' ? (
                     <>
-                        {/* MOBILE CARD VIEW */}
-                        <div className="grid grid-cols-1 gap-4 md:hidden">
-                            {filteredCompanies.length === 0 && (
-                                <div className="text-center py-10 bg-gray-800 rounded-xl border border-gray-700">
-                                    <Filter className="mx-auto text-gray-600 mb-2" size={32} />
-                                    <p className="text-gray-400">Nenhuma empresa encontrada.</p>
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
+                            <div className="w-full lg:w-auto">
+                                <h2 className="text-xl md:text-2xl font-bold text-white mb-1">Empresas Cadastradas</h2>
+                                <p className="text-gray-400 text-sm">Gerencie acessos e permissões</p>
+                            </div>
+                            
+                            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                                <div className="relative flex-1 sm:w-64">
+                                    <Search className="absolute left-3 top-3 text-gray-500" size={18} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Buscar empresa..." 
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-orange-500"
+                                    />
                                 </div>
-                            )}
-                            {filteredCompanies.map(company => (
-                                <div key={company.id} className="bg-gray-800 rounded-xl border border-gray-700 p-5 shadow-md">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex items-center gap-3">
-                                             <div className={`p-2 rounded-lg ${company.type === 'PJ' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'}`}>
-                                                {company.type === 'PJ' ? <Building2 size={20} /> : <User size={20} />}
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-white">{company.name}</h3>
-                                                <p className="text-xs text-gray-400">{company.responsibleName}</p>
-                                            </div>
-                                        </div>
-                                        <StatusBadge status={company.status} />
-                                    </div>
-
-                                    <div className="space-y-2 text-sm text-gray-300 mb-4 bg-gray-900/30 p-3 rounded-lg">
-                                        <div className="flex items-center gap-2 overflow-hidden">
-                                            <Mail size={14} className="text-gray-500 shrink-0"/>
-                                            <span className="truncate">{company.email}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Phone size={14} className="text-gray-500 shrink-0"/>
-                                            <span>{company.phone}</span>
-                                        </div>
-                                         <div className="flex items-center gap-2">
-                                            <CreditCard size={14} className="text-gray-500 shrink-0"/>
-                                            <span className="capitalize">{company.plan || 'Sem plano'}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-700">
-                                         <div className="flex-1">
-                                            <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1">Cargo</label>
-                                            <select
-                                                value={company.role}
-                                                onChange={(e) => initiateRoleChange(company.id, e.target.value)}
-                                                className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none"
-                                            >
-                                                <option value="admin">Admin</option>
-                                                <option value="manager">Manager</option>
-                                                <option value="bartender">Bartender</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1 text-right">Ações</label>
-                                            <ActionButtons company={company} />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                <button 
+                                    onClick={loadCompanies}
+                                    className="p-2.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg border border-gray-700 hover:bg-gray-700 transition-colors"
+                                    title="Atualizar Lista"
+                                >
+                                    <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
+                                </button>
+                            </div>
                         </div>
 
-                        {/* DESKTOP TABLE VIEW */}
-                        <div className="hidden md:block bg-gray-800 rounded-xl shadow-xl overflow-hidden border border-gray-700">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead className="bg-gray-900/50 border-b border-gray-700">
-                                        <tr>
-                                            <th className="p-4 text-gray-400 font-medium text-sm">Empresa / Responsável</th>
-                                            <th className="p-4 text-gray-400 font-medium text-sm">Contato</th>
-                                            <th className="p-4 text-gray-400 font-medium text-sm">Status</th>
-                                            <th className="p-4 text-gray-400 font-medium text-sm">Cargo / Role</th>
-                                            <th className="p-4 text-gray-400 font-medium text-sm">Plano</th>
-                                            <th className="p-4 text-gray-400 font-medium text-sm text-right">Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-700">
-                                        {filteredCompanies.length === 0 && (
-                                            <tr>
-                                                <td colSpan={6} className="p-8 text-center text-gray-500">
-                                                    Nenhuma empresa encontrada.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {filteredCompanies.map(company => (
-                                            <tr key={company.id} className="hover:bg-gray-700/30 transition-colors">
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`p-2 rounded-lg ${company.type === 'PJ' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'}`}>
-                                                            {company.type === 'PJ' ? <Building2 size={18} /> : <User size={18} />}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-white">{company.name}</p>
-                                                            <p className="text-xs text-gray-400">{company.responsibleName}</p>
-                                                            <p className="text-[10px] text-gray-500 font-mono mt-0.5">{company.document}</p>
-                                                        </div>
+                        <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto pb-2">
+                            <FilterTab id="all" label="Todos" count={counts.all} isActive={filterStatus === 'all'} />
+                            <FilterTab id="pending_approval" label="Pendentes" count={counts.pending} isActive={filterStatus === 'pending_approval'} />
+                            <FilterTab id="waiting_payment" label="Pagamento" count={counts.payment} isActive={filterStatus === 'waiting_payment'} />
+                            <FilterTab id="active" label="Ativos" count={counts.active} isActive={filterStatus === 'active'} />
+                            <FilterTab id="suspended" label="Suspensos" count={counts.suspended} isActive={filterStatus === 'suspended'} />
+                        </div>
+
+                        {isLoading ? (
+                            <div className="flex justify-center py-20">
+                                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div>
+                            </div>
+                        ) : (
+                            <>
+                                {/* MOBILE CARD VIEW */}
+                                <div className="grid grid-cols-1 gap-4 md:hidden">
+                                    {filteredCompanies.length === 0 && (
+                                        <div className="text-center py-10 bg-gray-800 rounded-xl border border-gray-700">
+                                            <Filter className="mx-auto text-gray-600 mb-2" size={32} />
+                                            <p className="text-gray-400">Nenhuma empresa encontrada.</p>
+                                        </div>
+                                    )}
+                                    {filteredCompanies.map(company => (
+                                        <div key={company.id} className="bg-gray-800 rounded-xl border border-gray-700 p-5 shadow-md">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`p-2 rounded-lg ${company.type === 'PJ' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'}`}>
+                                                        {company.type === 'PJ' ? <Building2 size={20} /> : <User size={20} />}
                                                     </div>
-                                                </td>
-                                                <td className="p-4">
-                                                    <p className="text-sm text-gray-300">{company.email}</p>
-                                                    <p className="text-xs text-gray-500">{company.phone}</p>
-                                                </td>
-                                                <td className="p-4">
-                                                    <StatusBadge status={company.status} />
-                                                </td>
-                                                <td className="p-4">
+                                                    <div>
+                                                        <h3 className="font-bold text-white">{company.name}</h3>
+                                                        <p className="text-xs text-gray-400">{company.responsibleName}</p>
+                                                    </div>
+                                                </div>
+                                                <StatusBadge status={company.status} />
+                                            </div>
+
+                                            <div className="space-y-2 text-sm text-gray-300 mb-4 bg-gray-900/30 p-3 rounded-lg">
+                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                    <Mail size={14} className="text-gray-500 shrink-0"/>
+                                                    <span className="truncate">{company.email}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Phone size={14} className="text-gray-500 shrink-0"/>
+                                                    <span>{company.phone}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <CreditCard size={14} className="text-gray-500 shrink-0"/>
+                                                    <span className="capitalize">{company.plan || 'Sem plano'}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-700">
+                                                <div className="flex-1">
+                                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1">Cargo</label>
                                                     <select
                                                         value={company.role}
                                                         onChange={(e) => initiateRoleChange(company.id, e.target.value)}
-                                                        className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-orange-500 focus:outline-none"
+                                                        className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none"
                                                     >
                                                         <option value="admin">Admin</option>
                                                         <option value="manager">Manager</option>
                                                         <option value="bartender">Bartender</option>
                                                     </select>
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className="text-sm text-gray-300 capitalize">{company.plan || '-'}</span>
-                                                </td>
-                                                <td className="p-4 text-right">
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1 text-right">Ações</label>
                                                     <ActionButtons company={company} />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* DESKTOP TABLE VIEW */}
+                                <div className="hidden md:block bg-gray-800 rounded-xl shadow-xl overflow-hidden border border-gray-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-gray-900/50 border-b border-gray-700">
+                                                <tr>
+                                                    <th className="p-4 text-gray-400 font-medium text-sm">Empresa / Responsável</th>
+                                                    <th className="p-4 text-gray-400 font-medium text-sm">Contato</th>
+                                                    <th className="p-4 text-gray-400 font-medium text-sm">Status</th>
+                                                    <th className="p-4 text-gray-400 font-medium text-sm">Cargo / Role</th>
+                                                    <th className="p-4 text-gray-400 font-medium text-sm">Plano</th>
+                                                    <th className="p-4 text-gray-400 font-medium text-sm text-right">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-700">
+                                                {filteredCompanies.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={6} className="p-8 text-center text-gray-500">
+                                                            Nenhuma empresa encontrada.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                                {filteredCompanies.map(company => (
+                                                    <tr key={company.id} className="hover:bg-gray-700/30 transition-colors">
+                                                        <td className="p-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`p-2 rounded-lg ${company.type === 'PJ' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'}`}>
+                                                                    {company.type === 'PJ' ? <Building2 size={18} /> : <User size={18} />}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-white">{company.name}</p>
+                                                                    <p className="text-xs text-gray-400">{company.responsibleName}</p>
+                                                                    <p className="text-[10px] text-gray-500 font-mono mt-0.5">{company.document}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <p className="text-sm text-gray-300">{company.email}</p>
+                                                            <p className="text-xs text-gray-500">{company.phone}</p>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <StatusBadge status={company.status} />
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <select
+                                                                value={company.role}
+                                                                onChange={(e) => initiateRoleChange(company.id, e.target.value)}
+                                                                className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-orange-500 focus:outline-none"
+                                                            >
+                                                                <option value="admin">Admin</option>
+                                                                <option value="manager">Manager</option>
+                                                                <option value="bartender">Bartender</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <span className="text-sm text-gray-300 capitalize">{company.plan || '-'}</span>
+                                                        </td>
+                                                        <td className="p-4 text-right">
+                                                            <ActionButtons company={company} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </>
+                ) : (
+                    <div className="max-w-2xl mx-auto bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
+                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                            <DollarSign className="text-green-400"/> Configuração de Preços (Planos)
+                        </h3>
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-2">Valor do Plano Mensal (R$)</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-3 text-gray-500">R$</span>
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        value={prices.monthly}
+                                        onChange={e => setPrices({...prices, monthly: parseFloat(e.target.value)})}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-orange-500 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-2">Valor do Plano Anual (Mensalidade eq.) (R$)</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-3 text-gray-500">R$</span>
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        value={prices.yearly}
+                                        onChange={e => setPrices({...prices, yearly: parseFloat(e.target.value)})}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-orange-500 focus:outline-none"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Total Anual: R$ {(prices.yearly * 12).toFixed(2).replace('.', ',')}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={handleSaveSettings}
+                                disabled={savingSettings}
+                                className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                            >
+                                {savingSettings ? <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div> : <Save size={20} />}
+                                Salvar Alterações
+                            </button>
+                        </div>
+                    </div>
                 )}
             </main>
 

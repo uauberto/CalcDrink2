@@ -8,7 +8,7 @@ export interface StockEntry {
 }
 
 export interface Ingredient {
-  id:string;
+  id: string;
   name: string;
   unit: 'ml' | 'l' | 'g' | 'kg' | 'un';
   isAlcoholic: boolean;
@@ -48,10 +48,10 @@ export interface Event {
   selectedDrinks: string[]; // Array of drink IDs
   staff?: StaffMember[]; // Lista de equipe escalada
   simulatedCosts?: {
-    ingredientCost: number;
-    operationalCost: number;
-    totalCost: number;
-    profit: number;
+    ingredientCost?: number;
+    operationalCost?: number;
+    totalCost?: number;
+    profit?: number;
     finalPrice: number;
   };
 }

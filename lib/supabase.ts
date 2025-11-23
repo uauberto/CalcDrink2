@@ -102,10 +102,25 @@ create table if not exists event_staff (
   cost numeric not null
 );
 
+-- 9. Configurações do Sistema (Preços)
+create table if not exists system_config (
+  key text primary key,
+  value text not null
+);
+
+-- Inserir valores padrão se não existirem
+insert into system_config (key, value) values ('price_monthly', '49.90') on conflict do nothing;
+insert into system_config (key, value) values ('price_yearly', '39.90') on conflict do nothing; -- valor mensal no plano anual
+
 -- Índices de Performance
 create index if not exists idx_ingredients_company on ingredients(company_id);
 create index if not exists idx_drinks_company on drinks(company_id);
 create index if not exists idx_events_company on events(company_id);
+
+-- Permissões
+alter table companies disable row level security;
+grant all on all tables in schema public to anon;
+grant all on all sequences in schema public to anon;
 `;
 
 const handleDatabaseError = (error: any, context: string) => {
@@ -184,6 +199,26 @@ export const api = {
             handleDatabaseError(error, 'Atualizar Empresa');
             return false;
         }
+    }
+  },
+
+  system: {
+    getPrices: async () => {
+        const { data, error } = await supabase.from('system_config').select('*');
+        if (error) { handleDatabaseError(error, 'Get Prices'); return { monthly: 49.90, yearly: 39.90 }; }
+        
+        const monthly = parseFloat(data.find((i:any) => i.key === 'price_monthly')?.value || '49.90');
+        const yearly = parseFloat(data.find((i:any) => i.key === 'price_yearly')?.value || '39.90');
+        return { monthly, yearly };
+    },
+    savePrices: async (monthly: number, yearly: number) => {
+        const updates = [
+            { key: 'price_monthly', value: monthly.toString() },
+            { key: 'price_yearly', value: yearly.toString() }
+        ];
+        const { error } = await supabase.from('system_config').upsert(updates);
+        if (error) handleDatabaseError(error, 'Save Prices');
+        return !error;
     }
   },
 
