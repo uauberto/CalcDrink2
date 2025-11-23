@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Company } from '../types.ts';
 import { api } from '../lib/supabase.ts';
-import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, MoreHorizontal } from 'lucide-react';
+import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, AlertTriangle } from 'lucide-react';
 
 interface MasterDashboardProps {
     adminUser: Company;
@@ -10,17 +10,102 @@ interface MasterDashboardProps {
     onSwitchToApp: () => void;
 }
 
+// --- CUSTOM MODAL COMPONENTS ---
+
+interface ConfirmModalProps {
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    isLoading?: boolean;
+}
+
+const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, message, onConfirm, onCancel, isLoading }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[100] backdrop-blur-sm animate-fade-in">
+            <div className="bg-gray-800 rounded-xl border border-gray-600 shadow-2xl w-full max-w-md p-6 transform transition-all scale-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="bg-orange-500/20 p-2 rounded-full">
+                        <AlertTriangle className="text-orange-500" size={24} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white">{title}</h3>
+                </div>
+                <p className="text-gray-300 mb-8 leading-relaxed">{message}</p>
+                <div className="flex justify-end gap-3">
+                    <button 
+                        onClick={onCancel}
+                        disabled={isLoading} 
+                        className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors font-medium"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={onConfirm}
+                        disabled={isLoading}
+                        className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-bold shadow-lg shadow-orange-900/30 flex items-center gap-2"
+                    >
+                        {isLoading && <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>}
+                        Confirmar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+interface AlertModalProps {
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'success' | 'error';
+    onClose: () => void;
+}
+
+const AlertModal: React.FC<AlertModalProps> = ({ isOpen, title, message, type = 'success', onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+            <div className="bg-gray-800 rounded-xl border border-gray-600 shadow-2xl w-full max-w-sm p-6 text-center">
+                <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-4 ${type === 'success' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                    {type === 'success' ? <CheckCircle size={28} /> : <XCircle size={28} />}
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
+                <p className="text-gray-400 mb-6 text-sm">{message}</p>
+                <button 
+                    onClick={onClose} 
+                    className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition-colors"
+                >
+                    Entendido
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// --- MAIN COMPONENT ---
+
 const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, onSwitchToApp }) => {
     const [companies, setCompanies] = useState<Company[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'all' | 'pending_approval' | 'active' | 'suspended' | 'waiting_payment'>('all');
     
-    // Estado do Modal de Redefinição de Senha
+    // Modal States
+    const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean; title: string; message: string; onConfirm: () => void;}>({
+        isOpen: false, title: '', message: '', onConfirm: () => {} 
+    });
+    const [alertDialog, setAlertDialog] = useState<{isOpen: boolean; title: string; message: string; type: 'success'|'error'}>({
+        isOpen: false, title: '', message: '', type: 'success'
+    });
+    const [isActionLoading, setIsActionLoading] = useState(false);
+
+    // Password Reset State
     const [resetPasswordModal, setResetPasswordModal] = useState<{isOpen: boolean, companyId: string, email: string} | null>(null);
     const [manualPassword, setManualPassword] = useState('');
 
-    // Estado do Modal de Gerenciamento de Usuários
+    // User Management Modal State
     const [managingUsersCompany, setManagingUsersCompany] = useState<Company | null>(null);
 
     useEffect(() => {
@@ -34,67 +119,87 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
         setIsLoading(false);
     };
 
-    // Função auxiliar para gerar senha aleatória
-    const generateRandomPassword = () => {
-        return Math.random().toString(36).slice(-8).toUpperCase();
-    };
+    const generateRandomPassword = () => Math.random().toString(36).slice(-8).toUpperCase();
 
     const openResetModal = (company: Company) => {
-        setManualPassword(generateRandomPassword()); // Já sugere uma ao abrir
+        setManualPassword(generateRandomPassword());
         setResetPasswordModal({ isOpen: true, companyId: company.id, email: company.email });
     };
 
-    const handleUpdateStatus = async (id: string, newStatus: Company['status']) => {
-        let message = '';
-        
+    const showAlert = (title: string, message: string, type: 'success' | 'error' = 'success') => {
+        setAlertDialog({ isOpen: true, title, message, type });
+    };
+
+    // --- ACTIONS ---
+
+    const initiateUpdateStatus = (id: string, newStatus: Company['status']) => {
+        let title = "Alterar Status";
+        let message = "Deseja realmente alterar o status desta empresa?";
+
         switch (newStatus) {
             case 'active':
-                message = "⚠️ Tem certeza que deseja LIBERAR O ACESSO desta empresa manualmente (Gratuitamente)?";
+                title = "Liberar Acesso";
+                message = "Esta ação concederá acesso total à plataforma para a empresa, ignorando a verificação de pagamento. Deseja continuar?";
                 break;
             case 'suspended':
-                message = "⛔ ATENÇÃO: Tem certeza que deseja SUSPENDER esta empresa? O usuário perderá o acesso imediatamente.";
+                title = "Suspender Empresa";
+                message = "O usuário perderá o acesso à plataforma imediatamente. Tem certeza?";
                 break;
             case 'waiting_payment':
-                message = "✅ Tem certeza que deseja APROVAR o cadastro e liberar para pagamento?";
+                title = "Aprovar Cadastro";
+                message = "O cadastro será aprovado e o usuário poderá prosseguir para a tela de pagamento.";
                 break;
-            default:
-                message = "Tem certeza que deseja alterar o status desta empresa?";
         }
 
-        if (!window.confirm(message)) return;
+        setConfirmDialog({
+            isOpen: true,
+            title,
+            message,
+            onConfirm: () => executeUpdateStatus(id, newStatus)
+        });
+    };
 
+    const executeUpdateStatus = async (id: string, newStatus: Company['status']) => {
+        setIsActionLoading(true);
         const success = await api.admin.updateCompanyStatus(id, newStatus);
+        setIsActionLoading(false);
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+
         if (success) {
             setCompanies(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
-            // Atualiza também o modal se estiver aberto
             if (managingUsersCompany && managingUsersCompany.id === id) {
                 setManagingUsersCompany(prev => prev ? { ...prev, status: newStatus } : null);
             }
+            showAlert("Sucesso", "Status atualizado com sucesso!", 'success');
         } else {
-            alert("Erro ao atualizar status.");
+            showAlert("Erro", "Falha ao atualizar status. Verifique as permissões.", 'error');
         }
     };
 
-    const handleRoleChange = async (id: string, newRole: string) => {
+    const initiateRoleChange = (id: string, newRole: string) => {
         const roleName = newRole === 'admin' ? 'Administrador' : newRole === 'manager' ? 'Gerente' : 'Bartender';
-        
-        if (!window.confirm(`Tem certeza que deseja alterar o nível de acesso deste usuário para ${roleName.toUpperCase()}?`)) {
-            // Se cancelar, precisamos forçar o re-render para voltar o select ao valor original
-            // Uma forma simples é recarregar a lista ou usar um estado local forçado.
-            // Aqui vamos recarregar a lista localmente para simplificar
-            setCompanies([...companies]);
-            return;
-        }
+        setConfirmDialog({
+            isOpen: true,
+            title: "Alterar Cargo",
+            message: `Deseja alterar o nível de acesso deste usuário para ${roleName.toUpperCase()}?`,
+            onConfirm: () => executeRoleChange(id, newRole)
+        });
+    };
 
+    const executeRoleChange = async (id: string, newRole: string) => {
+        setIsActionLoading(true);
         const success = await api.admin.updateCompanyRole(id, newRole);
+        setIsActionLoading(false);
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+
         if (success) {
             setCompanies(prev => prev.map(c => c.id === id ? { ...c, role: newRole as any } : c));
-             // Atualiza também o modal se estiver aberto
              if (managingUsersCompany && managingUsersCompany.id === id) {
                 setManagingUsersCompany(prev => prev ? { ...prev, role: newRole as any } : null);
             }
+            showAlert("Sucesso", "Cargo atualizado com sucesso!", 'success');
         } else {
-            alert("Erro ao atualizar cargo.");
+            showAlert("Erro", "Falha ao atualizar cargo.", 'error');
         }
     };
 
@@ -102,31 +207,37 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
         if (!resetPasswordModal || !manualPassword) return;
         
         if (manualPassword.length < 4) {
-            alert("A senha deve ter pelo menos 4 caracteres.");
+            showAlert("Senha Curta", "A senha deve ter pelo menos 4 caracteres.", 'error');
             return;
         }
 
+        setIsActionLoading(true);
         const success = await api.admin.resetUserPassword(resetPasswordModal.companyId, manualPassword);
+        setIsActionLoading(false);
         
         if (success) {
-            const subject = encodeURIComponent("Redefinição de Senha - CalculaDrink");
-            const body = encodeURIComponent(`Olá,\n\nSua senha foi redefinida pelo administrador.\n\nNova Senha: ${manualPassword}\n\nAcesse em: https://uauberto.github.io/CalculaDrink/\n\nAtenciosamente,\nEquipe CalculaDrink`);
-            
-            // Pergunta se quer abrir o email
-            if(window.confirm("Senha atualizada com sucesso!\n\nDeseja abrir o cliente de e-mail padrão para enviar a senha ao usuário?")) {
-                 window.open(`mailto:${resetPasswordModal.email}?subject=${subject}&body=${body}`, '_blank');
-            }
-            
             setResetPasswordModal(null);
+            
+            setConfirmDialog({
+                isOpen: true,
+                title: "Senha Redefinida",
+                message: "A senha foi salva com sucesso. Deseja abrir o cliente de e-mail para enviar a nova senha ao usuário?",
+                onConfirm: () => {
+                     const subject = encodeURIComponent("Redefinição de Senha - CalculaDrink");
+                     const body = encodeURIComponent(`Olá,\n\nSua senha foi redefinida pelo administrador.\n\nNova Senha: ${manualPassword}\n\nAcesse em: https://uauberto.github.io/CalculaDrink/\n\nAtenciosamente,\nEquipe CalculaDrink`);
+                     window.location.href = `mailto:${resetPasswordModal.email}?subject=${subject}&body=${body}`;
+                     setConfirmDialog({ ...confirmDialog, isOpen: false });
+                }
+            });
             setManualPassword('');
         } else {
-            alert("Erro ao redefinir senha no banco de dados.");
+            showAlert("Erro", "Erro ao salvar senha no banco de dados.", 'error');
         }
     };
     
     const copyToClipboard = () => {
         navigator.clipboard.writeText(manualPassword);
-        alert("Senha copiada para a área de transferência!");
+        showAlert("Copiado", "Senha copiada para a área de transferência!");
     }
 
     const filteredCompanies = companies.filter(c => {
@@ -138,7 +249,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
         return matchesSearch && c.status === filterStatus;
     });
 
-    // Contadores para as abas
     const counts = {
         all: companies.length,
         pending: companies.filter(c => c.status === 'pending_approval').length,
@@ -159,7 +269,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
 
     const ActionButtons = ({ company }: { company: Company }) => (
         <div className="flex items-center justify-end gap-2">
-             {/* Ver Usuários */}
              <button 
                 onClick={() => setManagingUsersCompany(company)}
                 className="p-2 bg-gray-700 text-gray-300 hover:bg-orange-500 hover:text-white rounded-lg transition-colors text-xs font-bold"
@@ -168,7 +277,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                 <Users size={16} />
             </button>
 
-            {/* Redefinir Senha */}
             <button 
                 onClick={() => openResetModal(company)}
                 className="p-2 bg-gray-600/30 text-gray-300 hover:bg-orange-500 hover:text-white rounded-lg transition-colors text-xs font-bold"
@@ -177,32 +285,29 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                 <KeyRound size={16} />
             </button>
 
-            {/* Botão de Aprovar (Manda para Waiting Payment) */}
             {company.status === 'pending_approval' && (
                 <button 
-                    onClick={() => handleUpdateStatus(company.id, 'waiting_payment')}
+                    onClick={() => initiateUpdateStatus(company.id, 'waiting_payment')}
                     className="p-2 bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600 hover:text-white rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
-                    title="Aprovar Cadastro (Cobrar)"
+                    title="Aprovar Cadastro"
                 >
                     <CheckCircle size={16} />
                 </button>
             )}
 
-            {/* Botão de Liberar Acesso (Bypass Pagamento) */}
             {(company.status === 'pending_approval' || company.status === 'waiting_payment' || company.status === 'suspended') && (
                 <button 
-                    onClick={() => handleUpdateStatus(company.id, 'active')}
+                    onClick={() => initiateUpdateStatus(company.id, 'active')}
                     className="p-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
-                    title="Liberar Acesso Manualmente (Grátis)"
+                    title="Liberar Acesso Manualmente"
                 >
                     <Unlock size={16} />
                 </button>
             )}
 
-            {/* Botão de Suspender */}
             {company.status === 'active' && (
                 <button 
-                    onClick={() => handleUpdateStatus(company.id, 'suspended')}
+                    onClick={() => initiateUpdateStatus(company.id, 'suspended')}
                     className="p-2 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
                     title="Suspender Acesso"
                 >
@@ -232,6 +337,23 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
 
     return (
         <div className="min-h-screen bg-gray-900 font-sans">
+             {/* GLOBAL MODALS */}
+             <ConfirmModal 
+                isOpen={confirmDialog.isOpen} 
+                title={confirmDialog.title} 
+                message={confirmDialog.message} 
+                onConfirm={confirmDialog.onConfirm} 
+                onCancel={() => setConfirmDialog({...confirmDialog, isOpen: false})}
+                isLoading={isActionLoading}
+            />
+            <AlertModal
+                isOpen={alertDialog.isOpen}
+                title={alertDialog.title}
+                message={alertDialog.message}
+                type={alertDialog.type}
+                onClose={() => setAlertDialog({...alertDialog, isOpen: false})}
+            />
+
             <header className="bg-gray-800 shadow-lg border-b border-orange-600/30 sticky top-0 z-30">
                 <div className="container mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -264,7 +386,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
             </header>
 
             <main className="container mx-auto p-4 sm:p-6">
-                {/* Top Control Bar */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
                     <div className="w-full lg:w-auto">
                         <h2 className="text-xl md:text-2xl font-bold text-white mb-1">Empresas Cadastradas</h2>
@@ -292,7 +413,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                     </div>
                 </div>
 
-                {/* Filters */}
                 <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto pb-2">
                     <FilterTab id="all" label="Todos" count={counts.all} isActive={filterStatus === 'all'} />
                     <FilterTab id="pending_approval" label="Pendentes" count={counts.pending} isActive={filterStatus === 'pending_approval'} />
@@ -307,12 +427,12 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                     </div>
                 ) : (
                     <>
-                        {/* MOBILE CARD VIEW (Visible on small screens) */}
+                        {/* MOBILE CARD VIEW */}
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {filteredCompanies.length === 0 && (
                                 <div className="text-center py-10 bg-gray-800 rounded-xl border border-gray-700">
                                     <Filter className="mx-auto text-gray-600 mb-2" size={32} />
-                                    <p className="text-gray-400">Nenhuma empresa encontrada com este filtro.</p>
+                                    <p className="text-gray-400">Nenhuma empresa encontrada.</p>
                                 </div>
                             )}
                             {filteredCompanies.map(company => (
@@ -350,7 +470,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                             <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1">Cargo</label>
                                             <select
                                                 value={company.role}
-                                                onChange={(e) => handleRoleChange(company.id, e.target.value)}
+                                                onChange={(e) => initiateRoleChange(company.id, e.target.value)}
                                                 className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none"
                                             >
                                                 <option value="admin">Admin</option>
@@ -367,7 +487,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                             ))}
                         </div>
 
-                        {/* DESKTOP TABLE VIEW (Hidden on mobile) */}
+                        {/* DESKTOP TABLE VIEW */}
                         <div className="hidden md:block bg-gray-800 rounded-xl shadow-xl overflow-hidden border border-gray-700">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
@@ -385,7 +505,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                         {filteredCompanies.length === 0 && (
                                             <tr>
                                                 <td colSpan={6} className="p-8 text-center text-gray-500">
-                                                    Nenhuma empresa encontrada para este filtro.
+                                                    Nenhuma empresa encontrada.
                                                 </td>
                                             </tr>
                                         )}
@@ -413,7 +533,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                 <td className="p-4">
                                                     <select
                                                         value={company.role}
-                                                        onChange={(e) => handleRoleChange(company.id, e.target.value)}
+                                                        onChange={(e) => initiateRoleChange(company.id, e.target.value)}
                                                         className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-orange-500 focus:outline-none"
                                                     >
                                                         <option value="admin">Admin</option>
@@ -437,7 +557,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                 )}
             </main>
 
-             {/* Modal de Gerenciamento de Usuários da Empresa */}
+             {/* Modal de Gerenciamento de Usuários */}
              {managingUsersCompany && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
                     <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 w-full max-w-3xl max-h-[90vh] flex flex-col">
@@ -455,23 +575,12 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                         </div>
                         
                         <div className="p-6 overflow-y-auto">
-                            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-6 flex items-start gap-3">
-                                <Shield className="text-blue-400 shrink-0 mt-0.5" size={18}/>
-                                <div>
-                                    <p className="text-sm text-blue-200 font-semibold">Estrutura de Usuários</p>
-                                    <p className="text-xs text-blue-300/80 mt-1">
-                                        Atualmente, cada empresa possui um usuário principal associado. 
-                                        Gerencie abaixo o acesso e permissões deste usuário.
-                                    </p>
-                                </div>
-                            </div>
-
                             <div className="bg-gray-900/50 rounded-xl border border-gray-700 overflow-hidden">
                                 <table className="w-full text-left">
                                     <thead className="bg-gray-800 border-b border-gray-700 text-xs uppercase text-gray-500 font-semibold">
                                         <tr>
                                             <th className="p-4">Usuário</th>
-                                            <th className="p-4">Email / Contato</th>
+                                            <th className="p-4">Email</th>
                                             <th className="p-4">Cargo</th>
                                             <th className="p-4">Status</th>
                                             <th className="p-4 text-right">Ações</th>
@@ -492,12 +601,11 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                             </td>
                                             <td className="p-4">
                                                  <p className="text-sm text-gray-300">{managingUsersCompany.email}</p>
-                                                 <p className="text-xs text-gray-500">{managingUsersCompany.phone}</p>
                                             </td>
                                             <td className="p-4">
                                                 <select
                                                     value={managingUsersCompany.role}
-                                                    onChange={(e) => handleRoleChange(managingUsersCompany.id, e.target.value)}
+                                                    onChange={(e) => initiateRoleChange(managingUsersCompany.id, e.target.value)}
                                                     className="bg-gray-800 text-white text-xs rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none w-full"
                                                 >
                                                     <option value="admin">Admin</option>
@@ -510,45 +618,29 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                             </td>
                                             <td className="p-4 text-right">
                                                 <div className="flex justify-end gap-2">
-                                                    {/* Suspender/Ativar Toggle */}
                                                     {managingUsersCompany.status === 'active' ? (
                                                         <button 
-                                                            onClick={() => handleUpdateStatus(managingUsersCompany.id, 'suspended')}
+                                                            onClick={() => initiateUpdateStatus(managingUsersCompany.id, 'suspended')}
                                                             className="p-2 bg-red-500/10 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-colors text-xs border border-red-500/20"
-                                                            title="Suspender Acesso"
+                                                            title="Suspender"
                                                         >
                                                             Suspender
                                                         </button>
                                                     ) : (
                                                         <button 
-                                                            onClick={() => handleUpdateStatus(managingUsersCompany.id, 'active')}
+                                                            onClick={() => initiateUpdateStatus(managingUsersCompany.id, 'active')}
                                                             className="p-2 bg-green-500/10 text-green-400 hover:bg-green-600 hover:text-white rounded-lg transition-colors text-xs border border-green-500/20"
-                                                            title="Ativar Acesso"
+                                                            title="Ativar"
                                                         >
                                                             Ativar
                                                         </button>
                                                     )}
-
-                                                    {/* Reset Senha */}
-                                                    <button 
-                                                        onClick={() => openResetModal(managingUsersCompany)}
-                                                        className="p-2 bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 rounded-lg transition-colors"
-                                                        title="Redefinir Senha"
-                                                    >
-                                                        <KeyRound size={16} />
-                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
-                        </div>
-
-                        <div className="p-4 border-t border-gray-700 bg-gray-800/50 flex justify-end">
-                            <button onClick={() => setManagingUsersCompany(null)} className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 font-medium text-sm">
-                                Fechar
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -598,10 +690,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                     <Copy size={20} />
                                 </button>
                             </div>
-
-                            <p className="text-gray-500 text-xs">
-                                Você pode digitar uma senha manualmente ou usar o botão de recarregar para gerar uma aleatória.
-                            </p>
 
                             <div className="flex gap-3 justify-end mt-6">
                                 <button 

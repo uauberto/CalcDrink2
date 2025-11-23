@@ -164,7 +164,7 @@ const DrinkManager: React.FC<DrinkManagerProps> = ({ drinks, setDrinks, ingredie
                 const qty = parseFloat(row['Quantidade'] || row['quantidade']);
                 
                 if (drinkName && ingName && qty > 0) {
-                    const ingId = ingNameMap.get(ingName.toLowerCase());
+                    const ingId = ingNameMap.get(String(ingName).toLowerCase());
                     if (ingId) {
                         if (!importedMap.has(drinkName)) {
                             importedMap.set(drinkName, {
