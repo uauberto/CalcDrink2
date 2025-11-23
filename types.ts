@@ -56,7 +56,7 @@ export interface Event {
   };
 }
 
-export type CompanyStatus = 'pending_approval' | 'waiting_payment' | 'active' | 'suspended';
+export type CompanyStatus = 'requested' | 'pending_approval' | 'waiting_payment' | 'active' | 'suspended';
 export type PlanType = 'monthly' | 'yearly' | null;
 export type CompanyType = 'PF' | 'PJ';
 export type UserRole = 'admin' | 'manager' | 'bartender';
@@ -68,7 +68,7 @@ export interface Company {
   status: CompanyStatus;
   plan: PlanType;
   nextBillingDate: string | null; // ISO string
-  role: UserRole; // Access Level
+  role: UserRole; // Access Level (Logged in user role)
   
   // Novos Campos Robustos
   type: CompanyType;
@@ -77,4 +77,14 @@ export interface Company {
   phone: string;
   responsibleName: string; // Nome do responsável ou do próprio PF
   requiresPasswordChange?: boolean;
+  logoData?: string; // Base64 string of the logo
+}
+
+export interface TeamUser {
+    id: string;
+    companyId: string;
+    email: string;
+    name: string;
+    role: UserRole;
+    createdAt: string;
 }

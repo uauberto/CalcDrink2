@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import type { Company } from '../types.ts';
 import { api } from '../lib/supabase.ts';
-import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, AlertTriangle, Settings, DollarSign, Save } from 'lucide-react';
+import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, AlertTriangle, Settings, DollarSign, Save, Image as ImageIcon, Upload } from 'lucide-react';
 
 interface MasterDashboardProps {
     adminUser: Company;
@@ -90,7 +91,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     const [companies, setCompanies] = useState<Company[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState<'all' | 'pending_approval' | 'active' | 'suspended' | 'waiting_payment'>('all');
+    const [filterStatus, setFilterStatus] = useState<'all' | 'requested' | 'pending_approval' | 'active' | 'suspended' | 'waiting_payment'>('all');
     
     // Settings State
     const [config, setConfig] = useState({
@@ -111,6 +112,11 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     // Password Reset State
     const [resetPasswordModal, setResetPasswordModal] = useState<{isOpen: boolean, companyId: string, email: string} | null>(null);
     const [manualPassword, setManualPassword] = useState('');
+
+    // Logo Upload State
+    const [logoModal, setLogoModal] = useState<{isOpen: boolean, company: Company} | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const logoInputRef = useRef<HTMLInputElement>(null);
 
     // User Management Modal State
     const [managingUsersCompany, setManagingUsersCompany] = useState<Company | null>(null);
@@ -156,6 +162,36 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
         setAlertDialog({ isOpen: true, title, message, type });
     };
 
+    // --- LOGO UPLOAD ACTIONS ---
+    
+    const handleLogoFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setLogoPreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSaveLogo = async () => {
+        if (!logoModal || !logoPreview) return;
+        
+        setIsActionLoading(true);
+        const success = await api.admin.updateCompanyLogo(logoModal.company.id, logoPreview);
+        setIsActionLoading(false);
+
+        if (success) {
+            setCompanies(prev => prev.map(c => c.id === logoModal.company.id ? { ...c, logoData: logoPreview } : c));
+            setLogoModal(null);
+            setLogoPreview(null);
+            showAlert("Sucesso", "Logo atualizada com sucesso!", 'success');
+        } else {
+            showAlert("Erro", "Erro ao salvar logo.", 'error');
+        }
+    };
+
     // --- ACTIONS ---
 
     const initiateUpdateStatus = (id: string, newStatus: Company['status']) => {
@@ -173,7 +209,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                 break;
             case 'waiting_payment':
                 title = "Aprovar Cadastro";
-                message = "O cadastro será aprovado e o usuário poderá prosseguir para a tela de pagamento.";
+                message = "A solicitação será aprovada e o usuário master poderá prosseguir para o pagamento.";
                 break;
         }
 
@@ -277,6 +313,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
 
     const counts = {
         all: companies.length,
+        requested: companies.filter(c => c.status === 'requested').length,
         pending: companies.filter(c => c.status === 'pending_approval').length,
         payment: companies.filter(c => c.status === 'waiting_payment').length,
         active: companies.filter(c => c.status === 'active').length,
@@ -285,8 +322,9 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
 
     const StatusBadge = ({ status }: { status: string }) => {
         switch (status) {
+            case 'requested': return <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs font-bold border border-purple-500/30">SOLICITADO</span>;
             case 'active': return <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-bold border border-green-500/30">ATIVO</span>;
-            case 'pending_approval': return <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-xs font-bold border border-yellow-500/30">PENDENTE</span>;
+            case 'pending_approval': return <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-xs font-bold border border-yellow-500/30">ANÁLISE</span>;
             case 'waiting_payment': return <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-bold border border-blue-500/30">AGUARD. PAGTO</span>;
             case 'suspended': return <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs font-bold border border-red-500/30">SUSPENSO</span>;
             default: return <span className="px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs font-bold border border-gray-500/30">{status}</span>;
@@ -304,12 +342,33 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
             </button>
 
             <button 
+                onClick={() => {
+                    setLogoPreview(company.logoData || null);
+                    setLogoModal({ isOpen: true, company });
+                }}
+                className="p-2 bg-gray-600/30 text-gray-300 hover:bg-orange-500 hover:text-white rounded-lg transition-colors text-xs font-bold"
+                title="Upload de Logo"
+            >
+                <ImageIcon size={16} />
+            </button>
+
+            <button 
                 onClick={() => openResetModal(company)}
                 className="p-2 bg-gray-600/30 text-gray-300 hover:bg-orange-500 hover:text-white rounded-lg transition-colors text-xs font-bold"
                 title="Redefinir Senha"
             >
                 <KeyRound size={16} />
             </button>
+
+            {company.status === 'requested' && (
+                <button 
+                    onClick={() => initiateUpdateStatus(company.id, 'waiting_payment')}
+                    className="p-2 bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+                    title="Aprovar Solicitação"
+                >
+                    <CheckCircle size={16} />
+                </button>
+            )}
 
             {company.status === 'pending_approval' && (
                 <button 
@@ -321,7 +380,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                 </button>
             )}
 
-            {(company.status === 'pending_approval' || company.status === 'waiting_payment' || company.status === 'suspended') && (
+            {(company.status === 'pending_approval' || company.status === 'waiting_payment' || company.status === 'suspended' || company.status === 'requested') && (
                 <button 
                     onClick={() => initiateUpdateStatus(company.id, 'active')}
                     className="p-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
@@ -458,7 +517,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
 
                         <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto pb-2">
                             <FilterTab id="all" label="Todos" count={counts.all} isActive={filterStatus === 'all'} />
-                            <FilterTab id="pending_approval" label="Pendentes" count={counts.pending} isActive={filterStatus === 'pending_approval'} />
+                            <FilterTab id="requested" label="Solicitações" count={counts.requested} isActive={filterStatus === 'requested'} />
                             <FilterTab id="waiting_payment" label="Pagamento" count={counts.payment} isActive={filterStatus === 'waiting_payment'} />
                             <FilterTab id="active" label="Ativos" count={counts.active} isActive={filterStatus === 'active'} />
                             <FilterTab id="suspended" label="Suspensos" count={counts.suspended} isActive={filterStatus === 'suspended'} />
@@ -511,15 +570,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                             <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-700">
                                                 <div className="flex-1">
                                                     <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1">Cargo</label>
-                                                    <select
-                                                        value={company.role}
-                                                        onChange={(e) => initiateRoleChange(company.id, e.target.value)}
-                                                        className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none"
-                                                    >
-                                                        <option value="admin">Admin</option>
-                                                        <option value="manager">Manager</option>
-                                                        <option value="bartender">Bartender</option>
-                                                    </select>
+                                                    <span className="text-white text-sm font-medium">RESPONSÁVEL</span>
                                                 </div>
                                                 <div>
                                                     <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1 text-right">Ações</label>
@@ -574,15 +625,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                             <StatusBadge status={company.status} />
                                                         </td>
                                                         <td className="p-4">
-                                                            <select
-                                                                value={company.role}
-                                                                onChange={(e) => initiateRoleChange(company.id, e.target.value)}
-                                                                className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-orange-500 focus:outline-none"
-                                                            >
-                                                                <option value="admin">Admin</option>
-                                                                <option value="manager">Manager</option>
-                                                                <option value="bartender">Bartender</option>
-                                                            </select>
+                                                            <span className="bg-gray-700 text-gray-200 px-2 py-1 rounded text-xs font-medium">RESPONSÁVEL</span>
                                                         </td>
                                                         <td className="p-4">
                                                             <span className="text-sm text-gray-300 capitalize">{company.plan || '-'}</span>
@@ -741,7 +784,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                     </div>
                                                     <div>
                                                         <p className="text-sm font-medium text-white">{managingUsersCompany.responsibleName}</p>
-                                                        <p className="text-xs text-gray-500">Titular</p>
+                                                        <p className="text-xs text-gray-500">Titular (Master)</p>
                                                     </div>
                                                 </div>
                                             </td>
@@ -756,7 +799,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                 >
                                                     <option value="admin">Admin</option>
                                                     <option value="manager">Manager</option>
-                                                    <option value="bartender">Bartender</option>
                                                 </select>
                                             </td>
                                             <td className="p-4">
@@ -849,6 +891,69 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                     className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg transition-colors"
                                 >
                                     Salvar Senha
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Upload de Logo */}
+            {logoModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 w-full max-w-md p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                <ImageIcon className="text-orange-500" />
+                                Upload de Logo
+                            </h3>
+                            <button onClick={() => { setLogoModal(null); setLogoPreview(null); }} className="text-gray-400 hover:text-white transition-colors">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-6">
+                            <p className="text-gray-300 text-sm">
+                                Selecione a logo da empresa <strong>{logoModal.company.name}</strong>. Ela será usada nos cabeçalhos dos PDFs.
+                            </p>
+                            
+                            <div className="flex justify-center">
+                                <div 
+                                    className="w-full h-48 border-2 border-dashed border-gray-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-orange-500 hover:bg-gray-700/30 transition-all relative overflow-hidden"
+                                    onClick={() => logoInputRef.current?.click()}
+                                >
+                                    {logoPreview ? (
+                                        <img src={logoPreview} alt="Logo Preview" className="w-full h-full object-contain p-2" />
+                                    ) : (
+                                        <>
+                                            <Upload size={48} className="text-gray-500 mb-2" />
+                                            <span className="text-gray-400 text-sm">Clique para selecionar imagem</span>
+                                        </>
+                                    )}
+                                    <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        className="hidden" 
+                                        ref={logoInputRef}
+                                        onChange={handleLogoFileSelect}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 justify-end mt-6">
+                                <button 
+                                    onClick={() => { setLogoModal(null); setLogoPreview(null); }} 
+                                    className="px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleSaveLogo} 
+                                    disabled={isActionLoading || !logoPreview}
+                                    className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {isActionLoading && <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>}
+                                    Salvar Logo
                                 </button>
                             </div>
                         </div>

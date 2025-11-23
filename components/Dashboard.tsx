@@ -9,9 +9,10 @@ import DrinkManager from './DrinkManager.tsx';
 import Simulator from './Simulator.tsx';
 import EventManager from './EventManager.tsx';
 import StockManager from './StockManager.tsx';
-import { Martini, Droplets, Calculator, Calendar, Package, LogOut, Shield, ArrowLeft, Loader2 } from 'lucide-react';
+import TeamManager from './TeamManager.tsx'; // Import TeamManager
+import { Martini, Droplets, Calculator, Calendar, Package, LogOut, Shield, ArrowLeft, Loader2, Users } from 'lucide-react';
 
-type Tab = 'ingredients' | 'drinks' | 'simulator' | 'events' | 'stock';
+type Tab = 'ingredients' | 'drinks' | 'simulator' | 'events' | 'stock' | 'team';
 
 interface DashboardProps {
     company: Company;
@@ -72,6 +73,8 @@ const Dashboard: React.FC<DashboardProps> = ({ company, onLogout, isMasterAdmin,
         return <Simulator drinks={drinks} ingredients={ingredients} setEvents={setEvents} company={company} />;
       case 'events':
         return <EventManager events={events} setEvents={setEvents} drinks={drinks} ingredients={ingredients} setIngredients={setIngredients} company={company} />;
+      case 'team':
+        return <TeamManager company={company} />;
       default:
         return null;
     }
@@ -104,6 +107,8 @@ const Dashboard: React.FC<DashboardProps> = ({ company, onLogout, isMasterAdmin,
         <path d="M 55 15 L 55 85 A 35 35 0 0 0 55 15" stroke="currentColor" strokeWidth="14" strokeLinecap="butt"/>
     </svg>
   );
+
+  const canManageTeam = company.role === 'admin' || company.role === 'manager';
 
   return (
     <div className="min-h-screen bg-gray-900 font-sans">
@@ -145,6 +150,7 @@ const Dashboard: React.FC<DashboardProps> = ({ company, onLogout, isMasterAdmin,
             <TabButton tab="drinks" label="Drinks" icon={<Martini size={18} />} />
             <TabButton tab="ingredients" label="Insumos" icon={<Droplets size={18} />} />
             <TabButton tab="stock" label="Estoque" icon={<Package size={18} />} />
+            {canManageTeam && <TabButton tab="team" label="Equipe" icon={<Users size={18} />} />}
           </nav>
         </div>
         {renderContent()}

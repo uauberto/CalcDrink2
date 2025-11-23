@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config.ts';
-import type { Company, Ingredient, Drink, Event, StaffMember, DrinkIngredient } from '../types.ts';
+import type { Company, Ingredient, Drink, Event, StaffMember, DrinkIngredient, TeamUser, UserRole } from '../types.ts';
 
 // Cria uma única instância do cliente Supabase
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -11,11 +11,11 @@ const SETUP_SQL = `
 
 create extension if not exists "pgcrypto";
 
--- 1. Tabela de Empresas
+-- 1. Tabela de Empresas (Contas Master)
 create table if not exists companies (
   id uuid default gen_random_uuid() primary key,
   name text not null,
-  status text default 'pending_approval',
+  status text default 'requested', -- requested, waiting_payment, active, suspended
   plan text,
   next_billing_date timestamp with time zone,
   created_at timestamp with time zone default now(),
@@ -25,16 +25,30 @@ create table if not exists companies (
   phone text,
   responsible_name text,
   role text default 'admin',
-  password text
+  password text,
+  logo_data text -- Armazena a logo em Base64
 );
 
 alter table companies add column if not exists password text;
+alter table companies add column if not exists logo_data text;
 alter table companies drop constraint if exists companies_document_key;
 alter table companies add constraint companies_document_key unique (document);
 alter table companies drop constraint if exists companies_email_key;
 alter table companies add constraint companies_email_key unique (email);
 
--- 2. Tabela de Insumos
+-- 2. Tabela de Usuários da Equipe (Staff)
+create table if not exists company_users (
+  id uuid default gen_random_uuid() primary key,
+  company_id uuid references companies(id) on delete cascade not null,
+  email text not null,
+  password text not null,
+  name text not null,
+  role text not null, -- 'manager', 'bartender'
+  created_at timestamp with time zone default now(),
+  unique(email)
+);
+
+-- 3. Tabela de Insumos
 create table if not exists ingredients (
   id uuid default gen_random_uuid() primary key,
   company_id uuid references companies(id) not null,
@@ -45,7 +59,7 @@ create table if not exists ingredients (
   created_at timestamp with time zone default now()
 );
 
--- 3. Entradas de Estoque
+-- 4. Entradas de Estoque
 create table if not exists stock_entries (
   id uuid default gen_random_uuid() primary key,
   ingredient_id uuid references ingredients(id) on delete cascade not null,
@@ -56,7 +70,7 @@ create table if not exists stock_entries (
   created_at timestamp with time zone default now()
 );
 
--- 4. Tabela de Drinks
+-- 5. Tabela de Drinks
 create table if not exists drinks (
   id uuid default gen_random_uuid() primary key,
   company_id uuid references companies(id) not null,
@@ -66,7 +80,7 @@ create table if not exists drinks (
   created_at timestamp with time zone default now()
 );
 
--- 5. Ingredientes do Drink (Relacionamento)
+-- 6. Ingredientes do Drink (Relacionamento)
 create table if not exists drink_ingredients (
   id uuid default gen_random_uuid() primary key,
   drink_id uuid references drinks(id) on delete cascade not null,
@@ -74,7 +88,7 @@ create table if not exists drink_ingredients (
   quantity numeric not null
 );
 
--- 6. Tabela de Eventos
+-- 7. Tabela de Eventos
 create table if not exists events (
   id uuid default gen_random_uuid() primary key,
   company_id uuid references companies(id) not null,
@@ -88,14 +102,14 @@ create table if not exists events (
   created_at timestamp with time zone default now()
 );
 
--- 7. Drinks do Evento
+-- 8. Drinks do Evento
 create table if not exists event_drinks (
   event_id uuid references events(id) on delete cascade not null,
   drink_id uuid references drinks(id) on delete cascade not null,
   primary key (event_id, drink_id)
 );
 
--- 8. Equipe do Evento
+-- 9. Equipe do Evento
 create table if not exists event_staff (
   id uuid default gen_random_uuid() primary key,
   event_id uuid references events(id) on delete cascade not null,
@@ -103,7 +117,7 @@ create table if not exists event_staff (
   cost numeric not null
 );
 
--- 9. Configurações do Sistema (Preços e Pagamento)
+-- 10. Configurações do Sistema (Preços e Pagamento)
 create table if not exists system_config (
   key text primary key,
   value text not null
@@ -121,10 +135,19 @@ insert into system_config (key, value) values ('gpay_gateway_merchant_id', 'exam
 create index if not exists idx_ingredients_company on ingredients(company_id);
 create index if not exists idx_drinks_company on drinks(company_id);
 create index if not exists idx_events_company on events(company_id);
+create index if not exists idx_company_users_email on company_users(email);
 
--- Permissões e Segurança
+-- Permissões e Segurança (DESABILITAR RLS PARA SIMPLICIDADE DO FRONTEND-ONLY)
 alter table companies disable row level security;
-alter table system_config disable row level security; -- Garante acesso à config
+alter table company_users disable row level security;
+alter table system_config disable row level security;
+alter table ingredients disable row level security;
+alter table stock_entries disable row level security;
+alter table drinks disable row level security;
+alter table drink_ingredients disable row level security;
+alter table events disable row level security;
+alter table event_drinks disable row level security;
+alter table event_staff disable row level security;
 
 grant all on all tables in schema public to anon;
 grant all on all sequences in schema public to anon;
@@ -154,25 +177,52 @@ const handleDatabaseError = (error: any, context: string) => {
 
 export const api = {
   auth: {
-    login: async (document: string, email: string, password?: string): Promise<Company | null> => {
+    login: async (documentOrEmail: string, emailArg: string, password?: string): Promise<Company | null> => {
       try {
-        const { data, error } = await supabase
+        // O campo de login pode ser documento ou email dependendo de como o form envia.
+        // Para simplificar, vamos assumir que o login principal usa EMAIL.
+        // Se vier documento, tentamos achar pelo documento.
+        const email = emailArg.trim();
+
+        // 1. Tentar login como DONO (Tabela companies)
+        const { data: ownerData, error: ownerError } = await supabase
           .from('companies')
           .select('*')
-          .eq('document', document)
-          .ilike('email', email.trim())
+          .or(`email.ilike.${email},document.eq.${documentOrEmail}`)
           .maybeSingle(); 
 
-        if (error) throw error;
-        if (!data) return null;
-
-        if (data.password && password) {
-            if (data.password !== password) {
-                console.error("Senha incorreta.");
-                return null;
+        if (ownerData) {
+            if (ownerData.password && password) {
+                if (ownerData.password !== password) {
+                    console.error("Senha incorreta (Master).");
+                    return null;
+                }
             }
+            return mapDatabaseToCompany(ownerData);
         }
-        return mapDatabaseToCompany(data);
+
+        // 2. Se não for dono, tentar login como EQUIPE (Tabela company_users)
+        // Nota: Usuários de equipe logam apenas com email
+        const { data: teamData, error: teamError } = await supabase
+            .from('company_users')
+            .select('*, companies(*)') // Join com a empresa pai
+            .ilike('email', email)
+            .maybeSingle();
+
+        if (teamData) {
+             if (teamData.password !== password) {
+                 console.error("Senha incorreta (Equipe).");
+                 return null;
+             }
+             // Mapeia para o objeto Company, mas com o ID da empresa PAI e o Role do USUÁRIO
+             const parentCompany = teamData.companies;
+             const sessionCompany = mapDatabaseToCompany(parentCompany);
+             sessionCompany.role = teamData.role as UserRole; // Sobrescreve o papel (ex: admin -> bartender)
+             // Adiciona metadados do usuário logado se necessário no futuro
+             return sessionCompany;
+        }
+
+        return null;
       } catch (error: any) {
         const isSetupError = handleDatabaseError(error, 'Login');
         if (isSetupError) throw new Error("TABELAS_NAO_ENCONTRADAS");
@@ -184,6 +234,9 @@ export const api = {
       try {
         const dbPayload = mapCompanyToDatabase(company);
         if (password) dbPayload.password = password;
+        
+        // Força status para 'requested' no registro via form público
+        dbPayload.status = 'requested';
 
         const { data, error } = await supabase.from('companies').insert(dbPayload).select().single();
         if (error) throw error;
@@ -198,7 +251,7 @@ export const api = {
     update: async (company: Company): Promise<boolean> => {
         try {
             const dbPayload = mapCompanyToDatabase(company);
-            delete dbPayload.password;
+            delete dbPayload.password; // Não atualiza senha por aqui
             const { error } = await supabase.from('companies').update(dbPayload).eq('id', company.id);
             if (error) throw error;
             return true;
@@ -209,12 +262,42 @@ export const api = {
     }
   },
 
+  team: {
+      list: async (companyId: string): Promise<TeamUser[]> => {
+          const { data, error } = await supabase.from('company_users').select('*').eq('company_id', companyId);
+          if (error) { handleDatabaseError(error, 'Listar Equipe'); return []; }
+          return data.map((u: any) => ({
+              id: u.id,
+              companyId: u.company_id,
+              name: u.name,
+              email: u.email,
+              role: u.role,
+              createdAt: u.created_at
+          }));
+      },
+      add: async (user: Omit<TeamUser, 'id' | 'createdAt'>, password: string): Promise<boolean> => {
+          const { error } = await supabase.from('company_users').insert({
+              company_id: user.companyId,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              password: password
+          });
+          if (error) { handleDatabaseError(error, 'Adicionar Membro'); return false; }
+          return true;
+      },
+      remove: async (userId: string): Promise<boolean> => {
+          const { error } = await supabase.from('company_users').delete().eq('id', userId);
+          if (error) { handleDatabaseError(error, 'Remover Membro'); return false; }
+          return true;
+      }
+  },
+
   system: {
     getConfig: async () => {
         const { data, error } = await supabase.from('system_config').select('*');
         if (error) { 
             handleDatabaseError(error, 'Get Config'); 
-            // Return defaults on error so the app doesn't crash
             return { prices: { monthly: 49.90, yearly: 39.90 }, googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' } }; 
         }
         
@@ -246,6 +329,34 @@ export const api = {
         if (error) handleDatabaseError(error, 'Save Config');
         return !error;
     }
+  },
+
+  admin: {
+      listAllCompanies: async (): Promise<Company[]> => {
+          const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
+          if (error) { handleDatabaseError(error, 'Admin List'); return []; }
+          return data.map(mapDatabaseToCompany);
+      },
+      updateCompanyStatus: async (id: string, status: Company['status']): Promise<boolean> => {
+           const { error } = await supabase.from('companies').update({ status: status }).eq('id', id);
+           if (error) handleDatabaseError(error, 'Admin Update Status');
+           return !error;
+      },
+      updateCompanyRole: async (id: string, role: string): Promise<boolean> => {
+          const { error } = await supabase.from('companies').update({ role: role }).eq('id', id);
+          if (error) handleDatabaseError(error, 'Admin Update Role');
+          return !error;
+      },
+      resetUserPassword: async (id: string, newPassword: string): Promise<boolean> => {
+          const { error } = await supabase.from('companies').update({ password: newPassword }).eq('id', id);
+          if (error) handleDatabaseError(error, 'Admin Reset Password');
+          return !error;
+      },
+      updateCompanyLogo: async (id: string, logoData: string): Promise<boolean> => {
+          const { error } = await supabase.from('companies').update({ logo_data: logoData }).eq('id', id);
+          if (error) handleDatabaseError(error, 'Admin Update Logo');
+          return !error;
+      }
   },
 
   ingredients: {
@@ -304,7 +415,6 @@ export const api = {
 
   drinks: {
       list: async (companyId: string): Promise<Drink[]> => {
-          // Busca drinks e seus ingredientes
           const { data, error } = await supabase
             .from('drinks')
             .select('*, drink_ingredients(*)')
@@ -325,7 +435,6 @@ export const api = {
 
       save: async (companyId: string, drink: Drink): Promise<boolean> => {
           try {
-              // 1. Salva o Drink
               const { error: drinkError } = await supabase.from('drinks').upsert({
                   id: drink.id,
                   company_id: companyId,
@@ -335,10 +444,8 @@ export const api = {
               });
               if (drinkError) throw drinkError;
 
-              // 2. Limpa ingredientes antigos (simples estratégia de substituição)
               await supabase.from('drink_ingredients').delete().eq('drink_id', drink.id);
 
-              // 3. Insere novos ingredientes
               if (drink.ingredients.length > 0) {
                   const { error: ingError } = await supabase.from('drink_ingredients').insert(
                       drink.ingredients.map(di => ({
@@ -364,7 +471,6 @@ export const api = {
 
   events: {
       list: async (companyId: string): Promise<Event[]> => {
-          // Busca eventos com staff e drinks selecionados
           const { data, error } = await supabase
             .from('events')
             .select('*, event_staff(*), event_drinks(*)')
@@ -392,7 +498,6 @@ export const api = {
 
       save: async (companyId: string, event: Event): Promise<boolean> => {
           try {
-            // 1. Salva Evento
             const { error: eventError } = await supabase.from('events').upsert({
                 id: event.id,
                 company_id: companyId,
@@ -406,7 +511,6 @@ export const api = {
             });
             if (eventError) throw eventError;
 
-            // 2. Salva Relacionamento de Drinks (Delete/Insert)
             await supabase.from('event_drinks').delete().eq('event_id', event.id);
             if (event.selectedDrinks.length > 0) {
                 await supabase.from('event_drinks').insert(
@@ -417,7 +521,6 @@ export const api = {
                 );
             }
 
-            // 3. Salva Staff
             await supabase.from('event_staff').delete().eq('event_id', event.id);
             if (event.staff && event.staff.length > 0) {
                 await supabase.from('event_staff').insert(
@@ -439,40 +542,17 @@ export const api = {
            const { error } = await supabase.from('events').delete().eq('id', id);
            if (error) handleDatabaseError(error, 'Deletar Evento');
       }
-  },
-
-  admin: {
-      listAllCompanies: async (): Promise<Company[]> => {
-          const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
-          if (error) { handleDatabaseError(error, 'Admin List'); return []; }
-          return data.map(mapDatabaseToCompany);
-      },
-      updateCompanyStatus: async (id: string, status: Company['status']): Promise<boolean> => {
-           const { error } = await supabase.from('companies').update({ status: status }).eq('id', id);
-           if (error) handleDatabaseError(error, 'Admin Update Status');
-           return !error;
-      },
-      updateCompanyRole: async (id: string, role: string): Promise<boolean> => {
-          const { error } = await supabase.from('companies').update({ role: role }).eq('id', id);
-          if (error) handleDatabaseError(error, 'Admin Update Role');
-          return !error;
-      },
-      resetUserPassword: async (id: string, newPassword: string): Promise<boolean> => {
-          const { error } = await supabase.from('companies').update({ password: newPassword }).eq('id', id);
-          if (error) handleDatabaseError(error, 'Admin Reset Password');
-          return !error;
-      }
   }
 };
 
 function mapDatabaseToCompany(db: any): Company {
     return {
-        id: db.id, name: db.name, createdAt: db.created_at, status: db.status, plan: db.plan, nextBillingDate: db.next_billing_date, type: db.type || 'PJ', document: db.document || '', email: db.email || '', phone: db.phone || '', responsibleName: db.responsible_name || '', role: db.role || 'admin'
+        id: db.id, name: db.name, createdAt: db.created_at, status: db.status, plan: db.plan, nextBillingDate: db.next_billing_date, type: db.type || 'PJ', document: db.document || '', email: db.email || '', phone: db.phone || '', responsibleName: db.responsible_name || '', role: db.role || 'admin', logoData: db.logo_data
     };
 }
 function mapCompanyToDatabase(app: Company): any {
     return {
-        id: app.id, name: app.name, status: app.status, plan: app.plan, next_billing_date: app.nextBillingDate, type: app.type, document: app.document, email: app.email, phone: app.phone, responsible_name: app.responsibleName, role: app.role
+        id: app.id, name: app.name, status: app.status, plan: app.plan, next_billing_date: app.nextBillingDate, type: app.type, document: app.document, email: app.email, phone: app.phone, responsible_name: app.responsibleName, role: app.role, logo_data: app.logoData
     };
 }
 function mapDatabaseToIngredient(db: any): Ingredient {
