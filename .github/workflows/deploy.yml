@@ -12,4 +12,4 @@ jobs:
           host: ${{ secrets.HOST }}
           user: ${{ secrets.USER }}
           password: ${{ secrets.PASSWORD }}
-          localDir: "."
+          localDir: "dist"
