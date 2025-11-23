@@ -93,7 +93,10 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     const [filterStatus, setFilterStatus] = useState<'all' | 'pending_approval' | 'active' | 'suspended' | 'waiting_payment'>('all');
     
     // Settings State
-    const [prices, setPrices] = useState({ monthly: 49.90, yearly: 39.90 });
+    const [config, setConfig] = useState({
+        prices: { monthly: 49.90, yearly: 39.90 },
+        googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' }
+    });
     const [savingSettings, setSavingSettings] = useState(false);
 
     // Modal States
@@ -126,17 +129,17 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
 
     const loadSettings = async () => {
         setIsLoading(true);
-        const data = await api.system.getPrices();
-        setPrices(data);
+        const data = await api.system.getConfig();
+        setConfig(data);
         setIsLoading(false);
     }
 
     const handleSaveSettings = async () => {
         setSavingSettings(true);
-        const success = await api.system.savePrices(prices.monthly, prices.yearly);
+        const success = await api.system.saveConfig(config);
         setSavingSettings(false);
         if (success) {
-            showAlert("Sucesso", "Configurações de preço atualizadas!", 'success');
+            showAlert("Sucesso", "Configurações atualizadas!", 'success');
         } else {
             showAlert("Erro", "Falha ao salvar configurações.", 'error');
         }
@@ -597,49 +600,105 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                         )}
                     </>
                 ) : (
-                    <div className="max-w-2xl mx-auto bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
-                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                            <DollarSign className="text-green-400"/> Configuração de Preços (Planos)
-                        </h3>
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-2">Valor do Plano Mensal (R$)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-3 text-gray-500">R$</span>
-                                    <input 
-                                        type="number" 
-                                        step="0.01"
-                                        value={prices.monthly}
-                                        onChange={e => setPrices({...prices, monthly: parseFloat(e.target.value)})}
-                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-orange-500 focus:outline-none"
-                                    />
+                    <div className="max-w-4xl mx-auto space-y-8">
+                        {/* Seção de Preços */}
+                        <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
+                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                                <DollarSign className="text-green-400"/> Configuração de Preços (Planos)
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Valor do Plano Mensal (R$)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-gray-500">R$</span>
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={config.prices.monthly}
+                                            onChange={e => setConfig({ ...config, prices: { ...config.prices, monthly: parseFloat(e.target.value) } })}
+                                            className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-orange-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Valor do Plano Anual (Mensalidade eq.) (R$)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-gray-500">R$</span>
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={config.prices.yearly}
+                                            onChange={e => setConfig({ ...config, prices: { ...config.prices, yearly: parseFloat(e.target.value) } })}
+                                            className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-orange-500 focus:outline-none"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Total Anual: R$ {(config.prices.yearly * 12).toFixed(2).replace('.', ',')}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-2">Valor do Plano Anual (Mensalidade eq.) (R$)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-3 text-gray-500">R$</span>
-                                    <input 
-                                        type="number" 
-                                        step="0.01"
-                                        value={prices.yearly}
-                                        onChange={e => setPrices({...prices, yearly: parseFloat(e.target.value)})}
-                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-orange-500 focus:outline-none"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Total Anual: R$ {(prices.yearly * 12).toFixed(2).replace('.', ',')}
-                                    </p>
-                                </div>
-                            </div>
-                            <button 
-                                onClick={handleSaveSettings}
-                                disabled={savingSettings}
-                                className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                            >
-                                {savingSettings ? <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div> : <Save size={20} />}
-                                Salvar Alterações
-                            </button>
                         </div>
+
+                        {/* Seção Google Pay */}
+                        <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
+                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                                <CreditCard className="text-blue-400"/> Configuração de Pagamento (Google Pay)
+                            </h3>
+                            <p className="text-sm text-gray-400 mb-6 bg-gray-900 p-3 rounded-lg border border-gray-700">
+                                Estas configurações são usadas para inicializar o cliente do Google Pay. Para produção, certifique-se de obter o Merchant ID correto com seu gateway (Stripe, Adyen, etc.).
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Merchant Name</label>
+                                    <input 
+                                        type="text"
+                                        value={config.googlePay.merchantName}
+                                        onChange={e => setConfig({ ...config, googlePay: { ...config.googlePay, merchantName: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="Ex: CalculaDrink Ltda"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Google Merchant ID</label>
+                                    <input 
+                                        type="text"
+                                        value={config.googlePay.merchantId}
+                                        onChange={e => setConfig({ ...config, googlePay: { ...config.googlePay, merchantId: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="ID numérico fornecido pelo Google"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Gateway Name</label>
+                                    <input 
+                                        type="text"
+                                        value={config.googlePay.gateway}
+                                        onChange={e => setConfig({ ...config, googlePay: { ...config.googlePay, gateway: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="Ex: stripe, adyen, example"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Gateway Merchant ID</label>
+                                    <input 
+                                        type="text"
+                                        value={config.googlePay.gatewayMerchantId}
+                                        onChange={e => setConfig({ ...config, googlePay: { ...config.googlePay, gatewayMerchantId: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="ID fornecido pelo Gateway"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={handleSaveSettings}
+                            disabled={savingSettings}
+                            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-orange-900/30"
+                        >
+                            {savingSettings ? <div className="animate-spin h-5 w-5 border-2 border-white rounded-full border-t-transparent"></div> : <Save size={22} />}
+                            Salvar Todas as Alterações
+                        </button>
                     </div>
                 )}
             </main>

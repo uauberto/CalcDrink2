@@ -102,7 +102,7 @@ create table if not exists event_staff (
   cost numeric not null
 );
 
--- 9. Configurações do Sistema (Preços)
+-- 9. Configurações do Sistema (Preços e Pagamento)
 create table if not exists system_config (
   key text primary key,
   value text not null
@@ -110,7 +110,11 @@ create table if not exists system_config (
 
 -- Inserir valores padrão se não existirem
 insert into system_config (key, value) values ('price_monthly', '49.90') on conflict do nothing;
-insert into system_config (key, value) values ('price_yearly', '39.90') on conflict do nothing; -- valor mensal no plano anual
+insert into system_config (key, value) values ('price_yearly', '39.90') on conflict do nothing;
+insert into system_config (key, value) values ('gpay_merchant_name', 'CalculaDrink') on conflict do nothing;
+insert into system_config (key, value) values ('gpay_merchant_id', 'TEST_MERCHANT_ID') on conflict do nothing;
+insert into system_config (key, value) values ('gpay_gateway', 'example') on conflict do nothing;
+insert into system_config (key, value) values ('gpay_gateway_merchant_id', 'exampleGatewayMerchantId') on conflict do nothing;
 
 -- Índices de Performance
 create index if not exists idx_ingredients_company on ingredients(company_id);
@@ -203,21 +207,36 @@ export const api = {
   },
 
   system: {
-    getPrices: async () => {
+    getConfig: async () => {
         const { data, error } = await supabase.from('system_config').select('*');
-        if (error) { handleDatabaseError(error, 'Get Prices'); return { monthly: 49.90, yearly: 39.90 }; }
+        if (error) { handleDatabaseError(error, 'Get Config'); return { prices: { monthly: 49.90, yearly: 39.90 }, googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' } }; }
         
-        const monthly = parseFloat(data.find((i:any) => i.key === 'price_monthly')?.value || '49.90');
-        const yearly = parseFloat(data.find((i:any) => i.key === 'price_yearly')?.value || '39.90');
-        return { monthly, yearly };
+        const getValue = (key: string, def: string) => data.find((i:any) => i.key === key)?.value || def;
+
+        return {
+            prices: {
+                monthly: parseFloat(getValue('price_monthly', '49.90')),
+                yearly: parseFloat(getValue('price_yearly', '39.90'))
+            },
+            googlePay: {
+                merchantName: getValue('gpay_merchant_name', 'CalculaDrink'),
+                merchantId: getValue('gpay_merchant_id', ''),
+                gateway: getValue('gpay_gateway', 'example'),
+                gatewayMerchantId: getValue('gpay_gateway_merchant_id', 'exampleGatewayMerchantId')
+            }
+        };
     },
-    savePrices: async (monthly: number, yearly: number) => {
+    saveConfig: async (config: { prices: { monthly: number, yearly: number }, googlePay: { merchantName: string, merchantId: string, gateway: string, gatewayMerchantId: string } }) => {
         const updates = [
-            { key: 'price_monthly', value: monthly.toString() },
-            { key: 'price_yearly', value: yearly.toString() }
+            { key: 'price_monthly', value: config.prices.monthly.toString() },
+            { key: 'price_yearly', value: config.prices.yearly.toString() },
+            { key: 'gpay_merchant_name', value: config.googlePay.merchantName },
+            { key: 'gpay_merchant_id', value: config.googlePay.merchantId },
+            { key: 'gpay_gateway', value: config.googlePay.gateway },
+            { key: 'gpay_gateway_merchant_id', value: config.googlePay.gatewayMerchantId }
         ];
         const { error } = await supabase.from('system_config').upsert(updates);
-        if (error) handleDatabaseError(error, 'Save Prices');
+        if (error) handleDatabaseError(error, 'Save Config');
         return !error;
     }
   },

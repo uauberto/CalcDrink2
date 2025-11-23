@@ -12,14 +12,18 @@ interface SubscriptionProps {
 const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLogout }) => {
   const [isLoading, setIsLoading] = useState<'monthly' | 'yearly' | null>(null);
   const [prices, setPrices] = useState({ monthly: 49.90, yearly: 39.90 });
+  const [paymentConfig, setPaymentConfig] = useState<{ merchantName: string, merchantId: string, gateway: string, gatewayMerchantId: string }>({
+      merchantName: 'CalculaDrink', merchantId: '', gateway: 'example', gatewayMerchantId: 'exampleGatewayMerchantId'
+  });
   const isOverdue = company.status === 'suspended' || (company.nextBillingDate && new Date(company.nextBillingDate) < new Date());
 
   useEffect(() => {
-    const loadPrices = async () => {
-        const p = await api.system.getPrices();
-        setPrices(p);
+    const loadConfig = async () => {
+        const config = await api.system.getConfig();
+        setPrices(config.prices);
+        setPaymentConfig(config.googlePay);
     };
-    loadPrices();
+    loadConfig();
   }, []);
 
   // GOOGLE PAY LOGIC
@@ -51,15 +55,15 @@ const Subscription: React.FC<SubscriptionProps> = ({ company, onSubscribe, onLog
             tokenizationSpecification: {
               type: 'PAYMENT_GATEWAY',
               parameters: {
-                gateway: 'example', // CHANGE THIS TO YOUR GATEWAY (e.g., 'stripe', 'adyen')
-                gatewayMerchantId: 'exampleGatewayMerchantId'
+                gateway: paymentConfig.gateway,
+                gatewayMerchantId: paymentConfig.gatewayMerchantId
               }
             }
           }
         ],
         merchantInfo: {
-          merchantId: '12345678901234567890', // YOUR MERCHANT ID
-          merchantName: 'CalculaDrink'
+          merchantId: paymentConfig.merchantId,
+          merchantName: paymentConfig.merchantName
         },
         transactionInfo: {
           totalPriceStatus: 'FINAL',
