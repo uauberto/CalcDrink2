@@ -4,6 +4,8 @@ import type { Drink, Ingredient, StaffMember, Event, Company } from '../types.ts
 import { Plus, Trash2, Users, Target, BarChart2, Save, X, Clock, RotateCcw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useLocalStorage } from '../hooks/useLocalStorage.ts';
+import { api } from '../lib/supabase.ts';
+import { ENABLE_DATABASE } from '../config.ts';
 
 interface SimulatorProps {
   drinks: Drink[];
@@ -106,7 +108,7 @@ const Simulator: React.FC<SimulatorProps> = ({ drinks, ingredients, setEvents, c
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
-  const handleSaveAsEvent = () => {
+  const handleSaveAsEvent = async () => {
     const totalPeople = numAdults + numChildren;
     if (!newEventDetails.name || !newEventDetails.startDateTime || !newEventDetails.endDateTime || selectedDrinks.length === 0 || totalPeople <= 0) {
         alert("Preencha todos os campos do evento (nome, data de início e fim) e certifique-se de que há drinks e convidados selecionados.");
@@ -134,8 +136,19 @@ const Simulator: React.FC<SimulatorProps> = ({ drinks, ingredients, setEvents, c
         simulatedCosts: costs,
     };
 
+    // Update local state (Optimistic)
     setEvents(prevEvents => [...prevEvents, newEvent].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
     
+    // Save to Database
+    if (ENABLE_DATABASE) {
+        try {
+            await api.events.save(company.id, newEvent);
+        } catch (error) {
+            console.error("Failed to save event from simulator:", error);
+            alert("Erro ao salvar evento no banco de dados. Verifique sua conexão.");
+        }
+    }
+
     setIsSaveModalOpen(false);
     setNewEventDetails({ name: '', startDateTime: '', endDateTime: '' });
     

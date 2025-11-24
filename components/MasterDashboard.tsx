@@ -96,7 +96,8 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     // Settings State
     const [config, setConfig] = useState({
         prices: { monthly: 49.90, yearly: 39.90 },
-        googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' }
+        googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' },
+        email: { host: '', port: '', user: '', pass: '', from: '', fromName: '' }
     });
     const [savingSettings, setSavingSettings] = useState(false);
 
@@ -729,6 +730,78 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                         onChange={e => setConfig({ ...config, googlePay: { ...config.googlePay, gatewayMerchantId: e.target.value } })}
                                         className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
                                         placeholder="ID fornecido pelo Gateway"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                         {/* Seção de E-mail */}
+                        <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
+                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                                <Mail className="text-purple-400"/> Configuração de E-mail (SMTP)
+                            </h3>
+                            <p className="text-sm text-gray-400 mb-6 bg-gray-900 p-3 rounded-lg border border-gray-700">
+                                Configurações para o servidor de envio de e-mails da plataforma.
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Host SMTP</label>
+                                    <input 
+                                        type="text"
+                                        value={config.email.host}
+                                        onChange={e => setConfig({ ...config, email: { ...config.email, host: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="Ex: smtp.gmail.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Porta SMTP</label>
+                                    <input 
+                                        type="text"
+                                        value={config.email.port}
+                                        onChange={e => setConfig({ ...config, email: { ...config.email, port: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="Ex: 587"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Usuário SMTP</label>
+                                    <input 
+                                        type="text"
+                                        value={config.email.user}
+                                        onChange={e => setConfig({ ...config, email: { ...config.email, user: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="email@exemplo.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Senha SMTP</label>
+                                    <input 
+                                        type="password"
+                                        value={config.email.pass}
+                                        onChange={e => setConfig({ ...config, email: { ...config.email, pass: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">E-mail de Remetente (From)</label>
+                                    <input 
+                                        type="email"
+                                        value={config.email.from}
+                                        onChange={e => setConfig({ ...config, email: { ...config.email, from: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="nao-responda@calculadrink.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Nome de Remetente</label>
+                                    <input 
+                                        type="text"
+                                        value={config.email.fromName}
+                                        onChange={e => setConfig({ ...config, email: { ...config.email, fromName: e.target.value } })}
+                                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2.5 px-4 text-white focus:border-orange-500 focus:outline-none"
+                                        placeholder="CalculaDrink"
                                     />
                                 </div>
                             </div>

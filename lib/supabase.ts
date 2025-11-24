@@ -117,7 +117,7 @@ create table if not exists event_staff (
   cost numeric not null
 );
 
--- 10. Configurações do Sistema (Preços e Pagamento)
+-- 10. Configurações do Sistema (Preços, Pagamento e E-mail)
 create table if not exists system_config (
   key text primary key,
   value text not null
@@ -127,9 +127,15 @@ create table if not exists system_config (
 insert into system_config (key, value) values ('price_monthly', '49.90') on conflict do nothing;
 insert into system_config (key, value) values ('price_yearly', '39.90') on conflict do nothing;
 insert into system_config (key, value) values ('gpay_merchant_name', 'CalculaDrink') on conflict do nothing;
-insert into system_config (key, value) values ('gpay_merchant_id', 'TEST_MERCHANT_ID') on conflict do nothing;
+insert into system_config (key, value) values ('gpay_merchant_id', '') on conflict do nothing;
 insert into system_config (key, value) values ('gpay_gateway', 'example') on conflict do nothing;
 insert into system_config (key, value) values ('gpay_gateway_merchant_id', 'exampleGatewayMerchantId') on conflict do nothing;
+insert into system_config (key, value) values ('email_host', '') on conflict do nothing;
+insert into system_config (key, value) values ('email_port', '') on conflict do nothing;
+insert into system_config (key, value) values ('email_user', '') on conflict do nothing;
+insert into system_config (key, value) values ('email_pass', '') on conflict do nothing;
+insert into system_config (key, value) values ('email_from', '') on conflict do nothing;
+insert into system_config (key, value) values ('email_from_name', 'CalculaDrink') on conflict do nothing;
 
 -- Índices de Performance
 create index if not exists idx_ingredients_company on ingredients(company_id);
@@ -298,7 +304,11 @@ export const api = {
         const { data, error } = await supabase.from('system_config').select('*');
         if (error) { 
             handleDatabaseError(error, 'Get Config'); 
-            return { prices: { monthly: 49.90, yearly: 39.90 }, googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' } }; 
+            return { 
+                prices: { monthly: 49.90, yearly: 39.90 }, 
+                googlePay: { merchantName: '', merchantId: '', gateway: '', gatewayMerchantId: '' },
+                email: { host: '', port: '', user: '', pass: '', from: '', fromName: '' }
+            }; 
         }
         
         const getValue = (key: string, def: string) => data.find((i:any) => i.key === key)?.value || def;
@@ -313,17 +323,35 @@ export const api = {
                 merchantId: getValue('gpay_merchant_id', ''),
                 gateway: getValue('gpay_gateway', 'example'),
                 gatewayMerchantId: getValue('gpay_gateway_merchant_id', 'exampleGatewayMerchantId')
+            },
+            email: {
+                host: getValue('email_host', ''),
+                port: getValue('email_port', ''),
+                user: getValue('email_user', ''),
+                pass: getValue('email_pass', ''),
+                from: getValue('email_from', ''),
+                fromName: getValue('email_from_name', '')
             }
         };
     },
-    saveConfig: async (config: { prices: { monthly: number, yearly: number }, googlePay: { merchantName: string, merchantId: string, gateway: string, gatewayMerchantId: string } }) => {
+    saveConfig: async (config: { 
+        prices: { monthly: number, yearly: number }, 
+        googlePay: { merchantName: string, merchantId: string, gateway: string, gatewayMerchantId: string },
+        email: { host: string, port: string, user: string, pass: string, from: string, fromName: string }
+    }) => {
         const updates = [
             { key: 'price_monthly', value: config.prices.monthly.toString() },
             { key: 'price_yearly', value: config.prices.yearly.toString() },
             { key: 'gpay_merchant_name', value: config.googlePay.merchantName },
             { key: 'gpay_merchant_id', value: config.googlePay.merchantId },
             { key: 'gpay_gateway', value: config.googlePay.gateway },
-            { key: 'gpay_gateway_merchant_id', value: config.googlePay.gatewayMerchantId }
+            { key: 'gpay_gateway_merchant_id', value: config.googlePay.gatewayMerchantId },
+            { key: 'email_host', value: config.email.host },
+            { key: 'email_port', value: config.email.port },
+            { key: 'email_user', value: config.email.user },
+            { key: 'email_pass', value: config.email.pass },
+            { key: 'email_from', value: config.email.from },
+            { key: 'email_from_name', value: config.email.fromName }
         ];
         const { error } = await supabase.from('system_config').upsert(updates);
         if (error) handleDatabaseError(error, 'Save Config');

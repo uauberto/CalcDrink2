@@ -19,15 +19,33 @@ export const generateProposalPDF = (
   doc.setFillColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
   doc.rect(0, 0, 210, 40, 'F');
   
+  let headerTextX = 15;
+
+  if (company.logoData) {
+      try {
+          // Detect format from data URI
+          let format = 'PNG';
+          if (company.logoData.includes('image/jpeg')) format = 'JPEG';
+          else if (company.logoData.includes('image/webp')) format = 'WEBP';
+          
+          doc.addImage(company.logoData, format, 10, 5, 30, 30);
+          headerTextX = 45;
+      } catch (err) {
+          console.error("Erro ao adicionar logo:", err);
+          // Fallback to default position
+          headerTextX = 15;
+      }
+  }
+  
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text(company.name, 15, 20);
+  doc.text(company.name, headerTextX, 20);
   
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Responsável: ${company.responsibleName}`, 15, 28);
-  doc.text(`Contato: ${company.email} | ${company.phone}`, 15, 34);
+  doc.text(`Responsável: ${company.responsibleName}`, headerTextX, 28);
+  doc.text(`Contato: ${company.email} | ${company.phone}`, headerTextX, 34);
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(14);
