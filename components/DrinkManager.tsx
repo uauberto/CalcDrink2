@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import type { Drink, DrinkIngredient, Ingredient, Company } from '../types.ts';
 import { Plus, Trash2, Edit, X, TrendingUp, DollarSign, AlertCircle, Upload, FileSpreadsheet } from 'lucide-react';
@@ -150,21 +149,23 @@ const DrinkManager: React.FC<DrinkManagerProps> = ({ drinks, setDrinks, ingredie
     if (!file) return;
     setImportLoading(true);
 
-    Papa.parse(file, {
+    Papa.parse<any>(file, {
         header: true,
         skipEmptyLines: true,
         complete: async (results) => {
             const importedMap = new Map<string, Drink>();
             // Map ingredient names to IDs
-            const ingNameMap = new Map(ingredients.map(i => [i.name.toLowerCase(), i.id]));
+            const ingNameMap = new Map<string, string>(ingredients.map(i => [i.name.toLowerCase(), i.id]));
 
-            for (const row of results.data as any[]) {
-                const drinkName = row['Drink'] || row['drink'];
-                const ingName = row['Insumo'] || row['insumo'];
+            const data = results.data;
+            for (const item of data) {
+                const row = item as any;
+                const drinkName = String(row['Drink'] || row['drink'] || '');
+                const ingName = String(row['Insumo'] || row['insumo'] || '');
                 const qty = parseFloat(row['Quantidade'] || row['quantidade']);
                 
                 if (drinkName && ingName && qty > 0) {
-                    const ingId = ingNameMap.get(String(ingName).toLowerCase());
+                    const ingId = ingNameMap.get(ingName.toLowerCase());
                     if (ingId) {
                         if (!importedMap.has(drinkName)) {
                             importedMap.set(drinkName, {
